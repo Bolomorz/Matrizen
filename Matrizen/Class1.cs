@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Matrices
 {
-    enum RorC { Row, Col};
+    public enum RorC { Row, Col};
 
     /// <summary>
     /// complex or real element of Matrix.
@@ -14,8 +14,7 @@ namespace Matrices
         public double im;
 
         public static Element zero = new Element(0, 0);
-        public static Element real1 = new Element(1);
-        public static Element comp1 = new Element(1, 1);
+        public static Element one = new Element(1);
 
         /// <summary>
         /// create complex element of Matrix.
@@ -118,12 +117,34 @@ namespace Matrices
                 return true;
             }
         }
+        public static bool operator >=(Element a, Element b)
+        {
+            if(a.re >= b.re)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        public static bool operator <=(Element a, Element b)
+        {
+            if (a.re <= b.re)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
     }
     
     /// <summary>
     /// Matrix m with complex or real elements.
     /// </summary>
-    public class Matrix
+    public class Matrix/**/
     {
         protected int rows;
         protected int cols;
@@ -195,11 +216,11 @@ namespace Matrices
                             {
                                 if (isComplex)
                                 {
-                                    elements[row, col] = Element.comp1;
+                                    elements[row, col] = Element.one;
                                 }
                                 else
                                 {
-                                    elements[row, col] = Element.real1;
+                                    elements[row, col] = Element.one;
                                 }
                             }
                         }
@@ -400,7 +421,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is symmetric. 
+        /// specify if Matrix m is symmetric. 
         /// returns true if m = m.transpose.
         /// </summary>
         /// <returns></returns>
@@ -424,7 +445,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is skewsymmetric. 
+        /// specify if Matrix m is skewsymmetric. 
         /// returns true if m = - m.transpose.
         /// </summary>
         /// <returns></returns>
@@ -448,7 +469,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is complex. 
+        /// specify if Matrix m is complex. 
         /// returns true if there is at least one complex element.
         /// </summary>
         /// <returns></returns>
@@ -466,7 +487,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is orthogonal. 
+        /// specify if Matrix m is orthogonal. 
         /// returns true if m * m.transpose = idendity matrix.
         /// </summary>
         /// <returns></returns>
@@ -492,7 +513,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is quadratic.
+        /// specify if Matrix m is quadratic.
         /// </summary>
         /// <returns></returns>
         public bool IsQuadratic()
@@ -501,7 +522,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is regular. 
+        /// specify if Matrix m is regular. 
         /// returns true if det(m) != 0.
         /// </summary>
         /// <returns></returns>
@@ -526,7 +547,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is hermitic. 
+        /// specify if Matrix m is hermitic. 
         /// returns true if m = m.conjugatetranspose.
         /// </summary>
         /// <returns></returns>
@@ -550,7 +571,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is skewhermitic. 
+        /// specify if Matrix m is skewhermitic. 
         /// returns true if m = - m.conjugatetranspose.
         /// </summary>
         /// <returns></returns>
@@ -574,7 +595,7 @@ namespace Matrices
         }
 
         /// <summary>
-        /// specify wether Matrix m is unitary. 
+        /// specify if Matrix m is unitary. 
         /// returns true if m * m.conjugatetranspose = idendity matrix.
         /// </summary>
         /// <returns></returns>
@@ -946,7 +967,7 @@ namespace Matrices
                     for(int col = 1; col <= m.GetCols(); col++)
                     {
                         Determinant sub = new Determinant(m, 1, col);
-                        if(col + 1 % 2 == 0)
+                        if((col + 1) % 2 == 0)
                         {
                             sum += m.GetElement(1, col) * sub.det;
                         }
@@ -962,6 +983,378 @@ namespace Matrices
             {
                 throw new ArgumentException("cannot calculate determinant of non quadratic matrix.");
             }
+        }
+    }
+
+    /// <summary>
+    /// Characteristic polynomial of Matrix m.
+    /// </summary>
+    public class CharacteristicPolynomial
+    {
+        protected Element[] coefficients;
+        protected Tuple<Element, Element>[,] characteristicmatrix;
+
+        /// <summary>
+        /// calculate characteristic polynomial of Matrix m.
+        /// </summary>
+        /// <param name="m"></param>
+        public CharacteristicPolynomial(Matrix m)
+        {
+            if(!m.IsQuadratic())
+            {
+                throw new ArgumentException("cannot calculate characteristic polynomial of non quadratic matrix.");
+            }
+            int n = m.GetRows();
+            CalculateCharacteristicMatrix(m, n);
+            coefficients = CharacteristicPolynomialRecursion(characteristicmatrix, n);
+        }
+
+        private void CalculateCharacteristicMatrix(Matrix m, int n)
+        {
+            characteristicmatrix = new Tuple<Element, Element>[n, n];
+            for(int i = 0; i<n; i++)
+            {
+                for(int j = 0; j<n; j++)
+                {
+                    Element element = m.GetElement(i + 1, j + 1);
+                    if(i == j)
+                    {
+                        characteristicmatrix[i, j] = new Tuple<Element, Element>(element, new Element(-1));
+                    }
+                    else
+                    {
+                        characteristicmatrix[i, j] = new Tuple<Element, Element>(element, Element.zero);
+                    }
+                }
+            }
+        }
+
+        private Element[] CharacteristicPolynomialRecursion(Tuple<Element, Element>[,] sub, int n)
+        {
+            Element[] ret = new Element[n + 1];
+            if (n == 2)
+            {
+                if (sub[0, 0].Item2 != Element.zero && sub[1, 1].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = -(sub[0, 0].Item1) - sub[1, 1].Item1;
+                    ret[2] = Element.one;
+                }
+                if (sub[0, 1].Item2 != Element.zero && sub[1, 0].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = sub[0, 1].Item1 + sub[1, 0].Item1;
+                    ret[2] = -(Element.one);
+                }
+                else if(sub[0, 0].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = -(sub[1, 1].Item1);
+                    ret[2] = Element.zero;
+                }
+                else if (sub[1, 1].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = -(sub[0, 0].Item1);
+                    ret[2] = Element.zero;
+                }
+                else if (sub[1, 0].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = -(sub[0, 1].Item1);
+                    ret[2] = Element.zero;
+                }
+                else if (sub[0, 1].Item2 != Element.zero)
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = -(sub[1, 0].Item1);
+                    ret[2] = Element.zero;
+                }
+                else
+                {
+                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
+                    ret[1] = Element.zero;
+                    ret[2] = Element.zero;
+                }
+            }
+            else
+            {
+                List<Element[]> subpolynomial = new List<Element[]>();
+                for(int col = 0; col<n; col++)
+                {
+                    Tuple<Element, Element>[,] submatrix = CalculateSubMatrix(sub, n, col);
+                    Tuple<Element, Element> adj;
+                    if ((col + 1) % 2 == 1)
+                    {
+                        adj = sub[0, col];
+                    }
+                    else
+                    {
+                        adj = new Tuple<Element, Element>(-(sub[0, col].Item1), -(sub[0,col].Item2));
+                    }
+                    subpolynomial.Add(CalculateAdjunctPolynomial(CharacteristicPolynomialRecursion(submatrix, n - 1), adj));
+                }
+                ret = CalculatePolynomialSum(subpolynomial);
+            }
+            return ret;
+        }
+
+        private Element[] CalculatePolynomialSum(List<Element[]> subs)
+        {
+            int n = int.MinValue;
+            foreach(var element in subs)
+            {
+                if(element.Length > n)
+                {
+                    n = element.Length;
+                }
+            }
+            Element[] ret = new Element[n];
+            for(int i = 0; i<n; i++)
+            {
+                ret[i] = new Element(0);
+                foreach(var element in subs)
+                {
+                    if(i < element.Length)
+                    {
+                        ret[i] += element[i];
+                    }
+                }
+            }
+            return ret;
+        }
+
+        private Tuple<Element, Element>[,] CalculateSubMatrix(Tuple<Element, Element>[,] sub, int n, int column)
+        {
+            Tuple<Element, Element>[,] ret = new Tuple<Element, Element>[n - 1, n - 1];
+            int newrow = 0;
+            int newcol;
+            for (int row = 0; row < n; row++)
+            {
+                if (row != 0)
+                {
+                    newcol = 0;
+                    for (int col = 0; col < n; col++)
+                    {
+                        if (col != column)
+                        {
+                            ret[newrow, newcol] = sub[row, col];
+                            newcol++;
+                        }
+                    }
+                    newrow++;
+                }
+            }
+            return ret;
+        }
+
+        private Element[] CalculateAdjunctPolynomial(Element[] sub, Tuple<Element, Element> adj)
+        {
+            int n = sub.Length;
+            if (adj.Item2 != Element.zero)
+            {
+                Element[] ret = new Element[n + 1];
+                ret[0] = sub[0] * adj.Item1;
+                ret[n] = sub[n - 1] * adj.Item2;
+                for(int i = 1; i<n; i++)
+                {
+                    ret[i] = sub[i] * adj.Item1 + sub[i - 1] * adj.Item2;
+                }
+                return ret;
+            }
+            else
+            {
+                Element[] ret = new Element[n];
+                for(int i = 0; i<n; i++)
+                {
+                    ret[i] = sub[i] * adj.Item1;
+                }
+                return ret;
+            }
+        }
+
+        /// <summary>
+        /// get characteristic polynomial of Matrix m.
+        /// returnspolynomial as array of elements P(x) = arr[0] + arr[1] * x + ....
+        /// </summary>
+        /// <returns></returns>
+        public Element[] GetCharacteristicPolynomial()
+        {
+            return coefficients;
+        }
+
+    }
+
+    public class Eigenvalue
+    {
+        protected Element eigenvalue;
+        protected List<Matrix> eigenvectors;
+
+        public Eigenvalue(Matrix m, CharacteristicPolynomial cp, Element val)
+        {
+            eigenvalue = val;
+        }
+    }
+
+    /// <summary>
+    /// Eigenvalue problem of Matrix m.
+    /// </summary>
+    public class EigenvalueProblem
+    {
+        protected Eigenvalue[] eigenvalues;
+
+        /// <summary>
+        /// calculate eigenvalues and their eigenvectors for Matrix m.
+        /// 1. calculate characteristic polynomial.
+        /// 2. solve for eigenvalues with BairstowAlgorithm.
+        /// </summary>
+        /// <param name="m"></param>
+        public EigenvalueProblem(Matrix m)
+        {
+            if (!m.IsQuadratic())
+            {
+                throw new ArgumentException("cannot calculate characteristic polynomial of non quadratic matrix.");
+            }
+            CharacteristicPolynomial cpcalc = new CharacteristicPolynomial(m);
+            Element[] cp = cpcalc.GetCharacteristicPolynomial();
+            List<Element> ev = Bairstow(cp);
+            eigenvalues = new Eigenvalue[ev.Count];
+            for(int i = 0; i<ev.Count; i++)
+            {
+                eigenvalues[i] = new Eigenvalue(m, cpcalc, ev[i]);
+            }
+        }
+
+        //
+        //*
+        //Bairstow Algorithm to solve characteristic polynomial
+        //returns list of eigenvalues
+        private List<Element> Bairstow(Element[] A)
+        {
+            List<Element> roots = new List<Element>();
+
+            while(A.Length > 2)
+            {
+                int n = A.Length;
+                Element u = A[n - 2] / A[n - 1];
+                Element v = A[n - 3] / A[n - 1];
+
+                Tuple<Element, Element, Element[]> quadfactor = QuadFactor(A, u, v);
+                Tuple<Element, Element> quadraticroots = SolveQuadraticEquation(Element.one, quadfactor.Item1, quadfactor.Item2);
+                roots.Add(quadraticroots.Item1);
+                roots.Add(quadraticroots.Item2);
+                A = quadfactor.Item3;
+            }
+
+            if(A.Length == 2)
+            {
+                roots.Add(-(A[0]) / A[1]);
+            }
+
+            return roots;
+        }
+
+        private Tuple<Element, Element, Element[]> QuadFactor(Element[] A, Element u, Element v)
+        {
+            const int ITERMAX = 100;
+            Element CONVTOL = new Element(0.0000000000000001);
+
+            int n = A.Length - 1;
+            Element c = Element.one;
+            Element d = Element.one;
+            int iter = 0;
+
+            Element[] B = new Element[n + 1];
+
+            while (c * c + d * d >= CONVTOL && iter < ITERMAX)
+            {
+                Element[] F = new Element[n + 1];
+                B = new Element[n + 1];
+                for(int i = 0; i<n+1; i++)
+                {
+                    F[i] = Element.zero;
+                    B[i] = Element.zero;
+                }
+                for(int i = n-2; i >= 0; i--)
+                {
+                    B[i] = A[i + 2] - u * B[i + 1] - v * B[i + 2];
+                    F[i] = B[i + 2] - u * F[i + 1] - v * F[i + 2];
+                }
+                c = A[1] - u * B[0] - v * B[1];
+                d = A[0] - v * B[0];
+                Element g = B[1] - u * F[0] - v * F[1];
+                Element h = B[0] - v * F[0];
+                Element det = v * g * g + h * (h - u * g);
+                u -= (-h * c + g * d) / det;
+                v -= (-g * v * c + (g * u - h) * d) / det;
+                iter++;
+            }
+
+            Element[] ret = new Element[n - 1];
+            for(int i = 0; i<n-1; i++)
+            {
+                ret[i] = B[i];
+            }
+
+            return new Tuple<Element, Element, Element[]>(u, v, ret);
+        }
+
+        private Element EvaluatePolynomial(Element[] A, Element cmplx)
+        {
+            Element result = Element.zero;
+            int power = 0;
+            foreach(var element in A)
+            {
+                result += element * Power(cmplx, power);
+                power++;
+            }
+            return result;
+        }
+
+        private Tuple<Element, Element> SolveQuadraticEquation(Element a, Element b, Element c)
+        {
+            Element det = b * b - 4 * a * c;
+            Element root1 = (-b + SquareRoot(det)) / (2.0 * a);
+            Element root2 = -(b / a + root1);
+            return new Tuple<Element, Element>(root1, root2);
+        }
+
+        private Element Power(Element cmplx, int power)
+        {
+            if(power == 0)
+            {
+                return Element.one;
+            }
+            else
+            {
+                Element result = cmplx;
+                for(int i = 1; i<power; i++)
+                {
+                    result = result * cmplx;
+                }
+                return result;
+            }
+        }
+
+        private Element SquareRoot(Element cmplx)
+        {
+            if(cmplx.im == 0)
+            {
+                return new Element(Math.Sqrt(cmplx.re));
+            }
+            else
+            {
+                double re = Math.Sqrt((cmplx.re + Math.Sqrt(cmplx.re * cmplx.re + cmplx.im * cmplx.im)) / 2);
+                double im = (cmplx.im / Math.Abs(cmplx.im)) * Math.Sqrt((-cmplx.re + Math.Sqrt(cmplx.re * cmplx.re + cmplx.im * cmplx.im)) / 2);
+                return new Element(re, im);
+            }
+        }
+        //*
+        //
+
+        public Eigenvalue[] GetEigenvalues()
+        {
+            return eigenvalues;
         }
     }
 }
