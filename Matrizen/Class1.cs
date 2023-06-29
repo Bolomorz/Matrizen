@@ -49,6 +49,18 @@ namespace Matrices
             }
         }
 
+        public override int GetHashCode()
+        {
+            return Convert.ToInt32(re + im);
+        }
+        public override bool Equals(object obj)
+        {
+            if(obj == null || !(obj is Element))
+            {
+                return false;
+            }
+            return this == (Element)obj;
+        }
         public static Element operator +(Element a)
             => a;
         public static Element operator -(Element a)
@@ -421,6 +433,16 @@ namespace Matrices
         }
 
         /// <summary>
+        /// calculate eigenvalues of Matrix.
+        /// </summary>
+        /// <returns></returns>
+        public Eigenvalue[] Eigenvalues()
+        {
+            EigenvalueProblem evp = new EigenvalueProblem(this);
+            return evp.GetEigenvalues();
+        }
+
+        /// <summary>
         /// specify if Matrix m is symmetric. 
         /// returns true if m = m.transpose.
         /// </summary>
@@ -531,7 +553,7 @@ namespace Matrices
             if(isQuadratic)
             {
                 Determinant determinant = new Determinant(this);
-                if(determinant.det != new Element(0))
+                if(determinant.det != Element.zero)
                 {
                     return true;
                 }
@@ -807,6 +829,45 @@ namespace Matrices
         //
         //***
 
+        public override string ToString()
+        {
+            string ret = "";
+            for(int row = 0; row<rows; row++)
+            {
+                string r = "row" + (row + 1) + ":\t";
+                for(int col = 0; col<cols; col++)
+                {
+                    r += " " + elements[row, col] + " |";
+                }
+                if(row == 0)
+                {
+                    ret += r;
+                }
+                else
+                {
+                    ret += Environment.NewLine + r;
+                }
+            }
+            return ret;
+        }
+
+        public override int GetHashCode()
+        {
+            int sum = 0;
+            foreach(var element in elements)
+            {
+                sum += element.GetHashCode();
+            }
+            return sum;
+        }
+        public override bool Equals(object obj)
+        {
+            if(obj == null || !(obj is Matrix))
+            {
+                return false;
+            }
+            return this == (Matrix)obj;
+        }
         public static Matrix operator +(Matrix A)
         {
             return A;
@@ -895,18 +956,17 @@ namespace Matrices
             {
                 return false;
             }
-            bool ret = true;
             for(int row = 0; row<A.rows; row++)
             {
                 for(int col = 0; col<A.cols; col++)
                 {
                     if(A.elements[row, col] != B.elements[row, col])
                     {
-                        ret = false;
+                        return false;
                     }
                 }
             }
-            return ret;
+            return true;
         }
         public static bool operator !=(Matrix A, Matrix B)
         {
@@ -914,18 +974,17 @@ namespace Matrices
             {
                 return true;
             }
-            bool ret = false;
             for (int row = 0; row < A.rows; row++)
             {
                 for (int col = 0; col < A.cols; col++)
                 {
                     if (A.elements[row, col] != B.elements[row, col])
                     {
-                        ret = true;
+                        return true;
                     }
                 }
             }
-            return ret;
+            return false;
         }
     }
 
@@ -950,13 +1009,15 @@ namespace Matrices
         /// <param name="matrix"></param>
         public Determinant(Matrix matrix)
         {
+            if(!matrix.IsQuadratic())
+            {
+                throw new ArgumentException("cannot calculate determinant of non quadratic matrix.");
+            }
             det = Calculate(matrix);
         }
 
         private Element Calculate(Matrix m)
         {
-            if(m.IsQuadratic())
-            {
                 if(m.GetRows() == 2)
                 {
                     return (m.GetElement(1, 1) * m.GetElement(2, 2) - m.GetElement(1, 2) * m.GetElement(2, 1));
@@ -978,11 +1039,6 @@ namespace Matrices
                     }
                     return sum;
                 }
-            }
-            else
-            {
-                throw new ArgumentException("cannot calculate determinant of non quadratic matrix.");
-            }
         }
     }
 
@@ -1188,11 +1244,97 @@ namespace Matrices
     public class Eigenvalue
     {
         protected Element eigenvalue;
-        protected List<Matrix> eigenvectors;
+        protected Element[] eigenvector;
 
-        public Eigenvalue(Matrix m, CharacteristicPolynomial cp, Element val)
+        public Eigenvalue(Matrix m, Element val)
         {
+            if(!m.IsQuadratic())
+            {
+                throw new ArgumentException("cannot calculate eigenvalues of non quadratic matrix.");
+            }
             eigenvalue = val;
+            Element[,] evam = CalculateAugmentedMatrix(m, val);
+            eigenvector = Gauss(evam);
+        }
+
+        private Element[,] CalculateAugmentedMatrix(Matrix m, Element ev)
+        {
+            int n = m.GetRows();
+            Element[,] evam = new Element[n, n+1];
+            for(int i = 0; i<n; i++)
+            {
+                for(int j = 0; j<n; j++)
+                {
+                    if(i == j)
+                    {
+                        evam[i, j] = m.GetElement(i + 1, j + 1) - ev;
+                    }
+                    else
+                    {
+                        evam[i, j] = m.GetElement(i + 1, j + 1);
+                    }
+                }
+                evam[i, n] = Element.zero;
+            }
+            return evam;
+        }
+
+        private Element[] Gauss(Element[,] am)
+        {
+            for(int line1 = 0; line1 < am.GetLength(0); line1++)
+            {
+
+                if(am[line1, line1] == Element.zero)
+                {
+                    for(int line2 = line1 + 1; line2 < am.GetLength(0); line2++)
+                    {
+                        if(am[line2, line1] != Element.zero)
+                        {
+                            for (int x = 0; x < am.GetLength(1); x++)
+                            {
+                                Element temp = am[x, line1];
+                                am[x, line1] = am[x, line2];
+                                am[x, line2] = temp;
+                            }
+                            break;
+                        }
+                    }
+                }
+                for(int line2 = line1 + 1; line2 < am.GetLength(0); line2++)
+                {
+                    if(am[line2, line1] == Element.zero)
+                    {
+                        continue;
+                    }
+                    Element factor = am[line2, line1] / am[line1, line1];
+                    for(int x = line1; x < am.GetLength(1); x++)
+                    {
+                        am[line2, x] -= factor * am[line1, x];
+                    }
+                }
+            }
+
+            Element[] result = new Element[am.GetLength(0)];
+            for(int line = am.GetLength(0) - 1; line >= 0; line--)
+            {
+                result[line] = am[line, am.GetLength(1) - 1];
+                for(int x = line + 1; x < result.Length; x++)
+                {
+                    result[line] -= result[x] * am[line, x];
+                }
+                result[line] /= am[line, line];
+            }
+            return result;
+        }
+
+        public Element GetEigenvalue()
+        {
+            return eigenvalue;
+        }
+
+        public Element[] GetEigenvector()
+        {
+            return eigenvector;
         }
     }
 
@@ -1221,7 +1363,7 @@ namespace Matrices
             eigenvalues = new Eigenvalue[ev.Count];
             for(int i = 0; i<ev.Count; i++)
             {
-                eigenvalues[i] = new Eigenvalue(m, cpcalc, ev[i]);
+                eigenvalues[i] = new Eigenvalue(m, ev[i]);
             }
         }
 
@@ -1256,7 +1398,7 @@ namespace Matrices
 
         private Tuple<Element, Element, Element[]> QuadFactor(Element[] A, Element u, Element v)
         {
-            const int ITERMAX = 100;
+            const int ITERMAX = 1000;
             Element CONVTOL = new Element(0.0000000000000001);
 
             int n = A.Length - 1;
