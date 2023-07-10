@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Matrices
 {
@@ -13,8 +15,11 @@ namespace Matrices
         public double re;
         public double im;
 
+        public bool isNull;
+
         public static Element zero = new Element(0, 0);
         public static Element one = new Element(1);
+        public static Element NULL = new Element(true);
 
         /// <summary>
         /// create complex element of Matrix.
@@ -25,6 +30,7 @@ namespace Matrices
         {
             re = real;
             im = imaginary;
+            isNull = false;
         }
 
         /// <summary>
@@ -35,18 +41,55 @@ namespace Matrices
         {
             re = real;
             im = 0;
+            isNull = false;
+        }
+
+        protected Element(bool isnull)
+        {
+            re = 0;
+            im = 0;
+            isNull = isnull;
+        }
+
+        public Element SquareRoot()
+        {
+            if (im == 0)
+            {
+                return new Element(Math.Sqrt(re));
+            }
+            else
+            {
+                double real = Math.Sqrt((re + Math.Sqrt(re * re + im * im)) / 2);
+                double imag = (im / Math.Abs(im)) * Math.Sqrt((-re + Math.Sqrt(re * re + im * im)) / 2);
+                return new Element(real, imag);
+            }
+        }
+
+        public Element SIGN()
+        {
+            return new Element(re / this.ABS(), im / this.ABS());
+        }
+
+        public double ABS()
+        {
+            return Math.Sqrt(re * re + im * im);
         }
 
         public override string ToString()
         {
             if (im == 0)
             {
-                return string.Format("{0}", re);
+                return string.Format("{0}", Math.Round(re, 5));
             }
             else
             {
-                return string.Format("{0} + i * {1}", re, im);
+                return string.Format("{0} + i * {1}", Math.Round(re, 5), Math.Round(im, 5));
             }
+        }
+
+        public bool IsNull()
+        {
+            return isNull;
         }
 
         public override int GetHashCode()
@@ -151,6 +194,28 @@ namespace Matrices
                 return false;
             }
         }
+        public static bool operator >(Element a, Element b)
+        {
+            if(a.re > b.re)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        public static bool operator <(Element a, Element b)
+        {
+            if (a.re < b.re)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
     }
     
     /// <summary>
@@ -162,6 +227,7 @@ namespace Matrices
         protected int cols;
         protected bool isQuadratic;
         protected Element[,] elements;
+        protected Element det;
         public Matrix()
         {
             rows = 0;
@@ -188,6 +254,7 @@ namespace Matrices
             {
                 isQuadratic = false;
             }
+            det = Element.NULL;
         }
 
         /// <summary>
@@ -239,6 +306,7 @@ namespace Matrices
                     }
                     break;
             }
+            det = Element.NULL;
         }
 
         /// <summary>
@@ -272,6 +340,7 @@ namespace Matrices
                     }
                 }
             }
+            det = Element.NULL;
         }
 
         /// <summary>
@@ -366,23 +435,27 @@ namespace Matrices
             {
                 throw new ArgumentException("cannot calculate inverse of non quadratic matrix.");
             }
-            Determinant determinant = new Determinant(this);
+            if(det.isNull)
+            {
+                Determinant d = new Determinant(this);
+                det = d.det;
+            }
             Element[,] inverse = new Element[rows, cols];
             for(int row = 1; row <= rows; row++)
             {
                 for(int col = 1; col <= cols; col++)
                 {
-                    Determinant subdeterminant = new Determinant(this.SubMatrix(row, col));
+                    Element subdeterminant = this.SubMatrix(row, col).GetDeterminant();
                     Element adjunct;
                     if((row + col) % 2 == 0)
                     {
-                        adjunct = subdeterminant.det;
+                        adjunct = subdeterminant;
                     }
                     else
                     {
-                        adjunct = -(subdeterminant.det);
+                        adjunct = -(subdeterminant);
                     }
-                    inverse[row - 1, col - 1] = adjunct / determinant.det;
+                    inverse[row - 1, col - 1] = adjunct / det;
                 }
             }
             return new Matrix(inverse);
@@ -552,8 +625,12 @@ namespace Matrices
         {
             if(isQuadratic)
             {
-                Determinant determinant = new Determinant(this);
-                if(determinant.det != Element.zero)
+                if(det.isNull)
+                {
+                    Determinant d = new Determinant(this);
+                    det = d.det;
+                }
+                if(det != Element.zero)
                 {
                     return true;
                 }
@@ -669,6 +746,21 @@ namespace Matrices
                 throw new IndexOutOfRangeException();
             }
             return elements[row-1, col-1];
+        }
+
+        public Element[,] GetElements()
+        {
+            return elements;
+        }
+
+        public Element GetDeterminant()
+        {
+            if(det.isNull)
+            {
+                Determinant d = new Determinant(this);
+                det = d.det;
+            }
+            return det;
         }
 
         //***
@@ -998,43 +1090,170 @@ namespace Matrices
         /// </summary>
         public Element det;
 
-        private Determinant(Matrix matrix, int row, int col)
-        {
-            det = Calculate(matrix.SubMatrix(row, col));
-        }
-
         /// <summary>
         /// calculate determinant of Matrix m.
         /// </summary>
         /// <param name="matrix"></param>
         public Determinant(Matrix matrix)
         {
-            if(!matrix.IsQuadratic())
+            if (!matrix.IsQuadratic())
             {
                 throw new ArgumentException("cannot calculate determinant of non quadratic matrix.");
             }
-            det = Calculate(matrix);
+            Tuple<int, Element[,], int[]> LUPdec = LUPDecompose(matrix.GetElements(), matrix.GetRows(), new Element(double.Epsilon));
+            if(LUPdec.Item1 == 1)
+            {
+                det = LUPDeterminant(LUPdec.Item2, LUPdec.Item3, matrix.GetCols());
+            }
+            else
+            {
+                det = Calculate(matrix.GetElements(), matrix.GetRows());
+            }
         }
 
-        private Element Calculate(Matrix m)
+        private Element LUPDeterminant(Element[,] A, int[] P, int n)
         {
-                if(m.GetRows() == 2)
+            Element d = A[0, 0];
+
+            for(int i = 1; i < n; i++)
+            {
+                d *= A[i, i];
+            }
+
+            if((P[n] - n) % 2 == 0)
+            {
+                return d;
+            }
+            else
+            {
+                return -d;
+            }
+        }
+
+        private Tuple<int, Element[,], int[]> LUPDecompose(Element[,] A, int n, Element Tol)
+        {
+            int i, j, k, imax;
+            Element maxA, absA;
+            Element[] ptr = new Element[n];
+
+            int[] P = new int[n+1];
+            Element[,] decompose = new Element[n, n];
+            
+            for(i = 0; i < n; i++)
+            {
+                for(j = 0; j < n; j++)
                 {
-                    return (m.GetElement(1, 1) * m.GetElement(2, 2) - m.GetElement(1, 2) * m.GetElement(2, 1));
+                    decompose[i, j] = A[i, j];
+                }
+            }
+
+            for(i = 0; i <= n; i++)
+            {
+                P[i] = i;
+            }
+
+            for(i = 0; i < n; i++)
+            {
+                maxA = Element.zero;
+                imax = i;
+
+                for(k = i; k < n; k++)
+                {
+                    absA = new Element(decompose[k, i].ABS());
+                    if(absA > maxA)
+                    {
+                        maxA = absA;
+                        imax = k;
+                    }
+                }
+
+                if (maxA < Tol) return new Tuple<int, Element[,], int[]>(0, decompose, P);
+
+                if(imax != i)
+                {
+                    j = P[i];
+                    P[i] = P[imax];
+                    P[imax] = j;
+
+                    for(k = 0; k < n; k++)
+                    {
+                        ptr[k] = decompose[i, k];
+                    }
+                    for (k = 0; k < n; k++)
+                    {
+                        decompose[i, k] = decompose[imax, k];
+                    }
+                    for (k = 0; k < n; k++)
+                    {
+                        decompose[imax, k] = ptr[k];
+                    }
+
+                    P[n]++;
+                }
+
+                for(j = i + 1; j < n; j++)
+                {
+                    decompose[j, i] /= decompose[i, i];
+
+                    for(k = i + 1; k < n; k++)
+                    {
+                        decompose[j, k] -= decompose[j, i] * decompose[i, k];
+                    }
+                }
+            }
+            return new Tuple<int, Element[,], int[]>(1, decompose, P);
+        }
+
+        private Element[,] Sub(Element[,] m, int i, int k, int n)
+        {
+            Element[,] sub = new Element[n - 1, n - 1];
+            int newrow = 0;
+            int newcol;
+            i--; k--;
+            for (int row = 0; row < n; row++)
+            {
+                if (row != i)
+                {
+                    newcol = 0;
+                    for (int col = 0; col < n; col++)
+                    {
+                        if (col != k)
+                        {
+                            sub[newrow, newcol] = m[row, col];
+                            newcol++;
+                        }
+                    }
+                    newrow++;
+                }
+            }
+            return sub;
+        }
+
+        private Element Calculate(Element[,] m, int n)
+        {
+                if(n == 2)
+                {
+                    return (m[0, 0] * m[1, 1] - m[0, 1] * m[1, 0]);
                 }
                 else
                 {
                     Element sum = new Element(0, 0);
-                    for(int col = 1; col <= m.GetCols(); col++)
+                    List<Element> dets = new List<Element>();
+                    for(int i = 1; i <= n; i++)
+                    { 
+                        dets.Add(Calculate(Sub(m, 1, i, n), n-1)); 
+                    }
+                    //Parallel.For(1, n + 1, index => dets.Add(Calculate(Sub(m, 1, index, n), n - 1)));
+                    for (int col = 1; col <= n; col++)
                     {
-                        Determinant sub = new Determinant(m, 1, col);
-                        if((col + 1) % 2 == 0)
+                        Element sub = dets[col-1];
+                        if ((col + 1) % 2 == 0)
                         {
-                            sum += m.GetElement(1, col) * sub.det;
+                            sum += m[0, col-1] * sub;
                         }
                         else
                         {
-                            sum += m.GetElement(1, col) * (-sub.det);
+                            sum -= m[0, col-1] * sub;
                         }
                     }
                     return sum;
@@ -1087,50 +1306,44 @@ namespace Matrices
 
         private Element[] CharacteristicPolynomialRecursion(Tuple<Element, Element>[,] sub, int n)
         {
-            Element[] ret = new Element[n + 1];
+            Element[] ret;
             if (n == 2)
             {
                 if (sub[0, 0].Item2 != Element.zero && sub[1, 1].Item2 != Element.zero)
                 {
+                    ret = new Element[3];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
                     ret[1] = -(sub[0, 0].Item1) - sub[1, 1].Item1;
                     ret[2] = Element.one;
                 }
-                if (sub[0, 1].Item2 != Element.zero && sub[1, 0].Item2 != Element.zero)
-                {
-                    ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
-                    ret[1] = sub[0, 1].Item1 + sub[1, 0].Item1;
-                    ret[2] = -(Element.one);
-                }
                 else if(sub[0, 0].Item2 != Element.zero)
                 {
+                    ret = new Element[2];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
                     ret[1] = -(sub[1, 1].Item1);
-                    ret[2] = Element.zero;
                 }
                 else if (sub[1, 1].Item2 != Element.zero)
                 {
+                    ret = new Element[2];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
                     ret[1] = -(sub[0, 0].Item1);
-                    ret[2] = Element.zero;
                 }
                 else if (sub[1, 0].Item2 != Element.zero)
                 {
+                    ret = new Element[2];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
                     ret[1] = -(sub[0, 1].Item1);
-                    ret[2] = Element.zero;
                 }
                 else if (sub[0, 1].Item2 != Element.zero)
                 {
+                    ret = new Element[2];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
                     ret[1] = -(sub[1, 0].Item1);
-                    ret[2] = Element.zero;
                 }
                 else
                 {
+                    ret = new Element[1];
                     ret[0] = sub[0, 0].Item1 * sub[1, 1].Item1 - sub[0, 1].Item1 * sub[1, 0].Item1;
-                    ret[1] = Element.zero;
-                    ret[2] = Element.zero;
                 }
             }
             else
@@ -1240,6 +1453,80 @@ namespace Matrices
         }
 
     }
+
+
+    public class HessenbergTransform
+    {
+        protected Matrix hessenbergtransform;
+
+        public HessenbergTransform(Matrix m)
+        {
+            if(!m.IsQuadratic())
+            {
+                throw new ArgumentException("cannot calculate HessenbergTransform of non quadratic matrix.");
+            }
+            hessenbergtransform = CalculateHessenbergTransform(m);
+        }
+
+        private Matrix CalculateHessenbergTransform(Matrix m)
+        {
+            int n = m.GetRows();
+            Element[,] hbtransform = new Element[n, n];
+            for(int i = 1; i <= n; i++)
+            {
+                for(int j = 1; j <= n; j++)
+                {
+                    hbtransform[i - 1, j - 1] = m.GetElement(i, j);
+                }
+            }
+            for(int j = 1; j <= n-2; j++)
+            {
+                for(int i = j + 2; i <= n; i++)
+                {
+                    Element aij = hbtransform[i - 1, j - 1];
+                    Element aj1j = hbtransform[j, j - 1];
+                    if(aij != Element.zero)
+                    {
+                        Element w, c, s;
+                        if(aj1j.ABS() < double.Epsilon * aij.ABS())
+                        {
+                            w = -m.GetElement(i, j);
+                            c = Element.zero;
+                            s = Element.one;
+                        }
+                        else
+                        {
+                            Element det = aj1j * aj1j + aij * aij;
+                            w = aj1j.SIGN() * det.SquareRoot();
+                            c = aj1j / w;
+                            s = -(aij / w);
+                        }
+                        hbtransform[j, j - 1] = w;
+                        hbtransform[i - 1, j - 1] = Element.zero;
+                        for(int k = j + 1; k <= n; k++)
+                        {
+                            Element h = c * hbtransform[j, k - 1] - s * hbtransform[i - 1, k - 1];
+                            hbtransform[i - 1, k - 1] = s * hbtransform[j, k - 1] + c * hbtransform[i - 1, k - 1];
+                            hbtransform[j, k - 1] = h;
+                        }
+                        for(int k = 1; k <= n; k++)
+                        {
+                            Element h = c * hbtransform[k - 1, j] - s * hbtransform[k - 1, i - 1];
+                            hbtransform[k - 1, i - 1] = s * hbtransform[k - 1, j] + c * hbtransform[k - 1, i - 1];
+                            hbtransform[k - 1, j] = h; 
+                        }
+                    }
+                }
+            }
+            return new Matrix(hbtransform);
+        }
+
+        public Matrix GetHessenbergTransform()
+        {
+            return hessenbergtransform;
+        }
+    }
+
 
     public class Eigenvalue
     {
@@ -1357,14 +1644,8 @@ namespace Matrices
             {
                 throw new ArgumentException("cannot calculate characteristic polynomial of non quadratic matrix.");
             }
-            CharacteristicPolynomial cpcalc = new CharacteristicPolynomial(m);
-            Element[] cp = cpcalc.GetCharacteristicPolynomial();
-            List<Element> ev = Bairstow(cp);
-            eigenvalues = new Eigenvalue[ev.Count];
-            for(int i = 0; i<ev.Count; i++)
-            {
-                eigenvalues[i] = new Eigenvalue(m, ev[i]);
-            }
+            HessenbergTransform hbt = new HessenbergTransform(m);
+            Matrix H = hbt.GetHessenbergTransform();
         }
 
         //
