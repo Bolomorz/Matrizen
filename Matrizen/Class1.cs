@@ -1101,7 +1101,7 @@ namespace Matrices
                 throw new ArgumentException("cannot calculate determinant of non quadratic matrix.");
             }
             Tuple<int, Element[,], int[]> LUPdec = LUPDecompose(matrix.GetElements(), matrix.GetRows(), new Element(double.Epsilon));
-            if(LUPdec.Item1 == 1)
+            if (LUPdec.Item1 == 1)
             {
                 det = LUPDeterminant(LUPdec.Item2, LUPdec.Item3, matrix.GetCols());
             }
@@ -1253,7 +1253,7 @@ namespace Matrices
                         }
                         else
                         {
-                            sum -= m[0, col-1] * sub;
+                            sum += -1 * m[0, col-1] * sub;
                         }
                     }
                     return sum;
