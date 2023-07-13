@@ -20,6 +20,7 @@ namespace Matrices
         public static Element zero = new Element(0, 0);
         public static Element one = new Element(1);
         public static Element NULL = new Element(true);
+        public static Element tol = new Element(double.Epsilon);
 
         /// <summary>
         /// create complex element of Matrix.
@@ -1454,7 +1455,9 @@ namespace Matrices
 
     }
 
-
+    /// <summary>
+    /// Hessenbergtransform of Matrix m.
+    /// </summary>
     public class HessenbergTransform
     {
         protected Matrix hessenbergtransform;
@@ -1527,20 +1530,156 @@ namespace Matrices
         }
     }
 
+    
+    public class QRTransform
+    {
+        protected Element[,] qrtransform;
+
+        protected class S
+        {
+            public int i;
+            public int j;
+            public Element sin;
+            public Element cos;
+
+            public S(int row, int col, Element tan)
+            {
+                i = row;
+                j = col;
+                sin = tan / (1.0 + tan * tan).SquareRoot();
+                cos = 1.0 / (1.0 + tan * tan).SquareRoot();
+            }
+
+            public S(int row, int col)
+            {
+                i = row;
+                j = col;
+                sin = Element.one;
+                cos = Element.zero;
+            }
+        }
+
+        public QRTransform(HessenbergTransform H)
+        {
+            int n = H.GetHessenbergTransform().GetRows();
+            qrtransform = new Element[n, n];
+            for (int i = 0; i < n; i++)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    qrtransform[i, j] = H.GetHessenbergTransform().GetElements()[i, j];
+                }
+            }
+            QR(qrtransform, n);
+        }
+
+        private void QR(Element[,] A, int n)
+        {
+            Element eisum0 = SumSQ(A, n);
+
+            Element error = Element.one;
+
+            while(error > Element.tol)
+            { 
+                QROneStep(A, n);
+
+                Element eisum1 = SumSQ(A, n);
+                error = eisum1 - eisum0;
+
+                eisum0 = eisum1;
+            }
+        }
+
+        private void QROneStep(Element[,] A, int n)
+        {
+            List<S> slist = new List<S>();
+            for (int j = 0; j < n; j++)
+            {
+                for (int i = n - 1; i > j; i--)
+                {
+                    S temp = NextS(A, i, j);
+                    SijDotA(temp, A, n);
+                    slist.Add(temp);
+                }
+            }
+            foreach (var s in slist)
+            {
+                ADotTransposeSij(A, s, n);
+            }
+        }
+
+        private Element[] Diagonals(Element[,] A, int n)
+        {
+            Element[] ret = new Element[n];
+            for (int i = 0; i < n; i++)
+            {
+                ret[i] = A[i, i];
+            }
+            return ret;
+        }
+
+        private Element SumSQ(Element[,] A, int n)
+        {
+            Element ret = Element.zero;
+            foreach (var element in Diagonals(A, n))
+            {
+                ret += element * element;
+            }
+            return ret;
+        }
+
+        private S NextS(Element[,] A, int i, int j)
+        {
+            if (A[i, j].ABS() < double.Epsilon || A[j, j] == Element.zero)
+            {
+                return new S(i, j);
+            }
+            else
+            {
+                Element tan = A[i, j] / A[j, j];
+                return new S(i, j, tan);
+            }
+        }
+
+        private void SijDotA(S s, Element[,] A, int n)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                Element temp = A[s.j, k] * s.cos + A[s.i, k] * s.sin;
+                A[s.i, k] = A[s.i, k] * s.cos - A[s.j, k] * s.sin;
+                A[s.j, k] = temp;
+            }
+        }
+
+        private void ADotTransposeSij(Element[,] A, S s, int n)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                Element temp = A[k, s.j] * s.cos + A[k, s.i] * s.sin;
+                A[k, s.i] = A[k, s.i] * s.cos - A[k, s.j] * s.sin;
+                A[k, s.j] = temp;
+            }
+        }
+
+        public Matrix GetQRTransform()
+        {
+            return new Matrix(qrtransform);
+        }
+    }
 
     public class Eigenvalue
     {
         protected Element eigenvalue;
         protected Element[] eigenvector;
 
-        public Eigenvalue(Matrix m, Element val)
+        public Eigenvalue(Matrix m, Element ev)
         {
             if(!m.IsQuadratic())
             {
                 throw new ArgumentException("cannot calculate eigenvalues of non quadratic matrix.");
             }
-            eigenvalue = val;
-            Element[,] evam = CalculateAugmentedMatrix(m, val);
+            eigenvalue = ev;
+            Element[,] evam = CalculateAugmentedMatrix(m, ev);
             eigenvector = Gauss(evam);
         }
 
