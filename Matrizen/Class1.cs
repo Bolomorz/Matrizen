@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -1530,34 +1532,54 @@ namespace Matrices
         }
     }
 
+    public class RotationMatrix
+    {
+        protected Matrix rotationmatrix;
+        public RotationMatrix(int p, int q, int n, Element x1, Element x2)
+        {
+            Element sin, cos;
+            if(x1 == Element.zero)
+            {
+                sin = Element.one;
+                cos = Element.zero;
+            }
+            else
+            {
+                Element tan = x2/x1;
+                sin = tan / (1.0 + tan*tan).SquareRoot();
+                cos = 1.0 / (1.0 + tan*tan).SquareRoot();
+            }
+            Element[,] rot = new Element[n,n];
+            for(int i = 0; i < n; i++)
+            {
+                for(int j = 0; j < n; j++)
+                {
+                    if(i == j)
+                    {
+                        rot[i,j] = Element.one;
+                    }
+                    else
+                    {
+                        rot[i,j] = Element.zero;
+                    }
+                }
+            }
+            rot[p,q] = sin;
+            rot[q,p] = - sin;
+            rot[p,p] = cos;
+            rot[q,q] = cos;
+            rotationmatrix = new Matrix(rot);
+        }
+
+        public Matrix GetRotationMatrix()
+        {
+            return rotationmatrix;
+        }
+    }
     
     public class QRTransform
     {
         protected Element[,] qrtransform;
-
-        protected class S
-        {
-            public int i;
-            public int j;
-            public Element sin;
-            public Element cos;
-
-            public S(int row, int col, Element tan)
-            {
-                i = row;
-                j = col;
-                sin = tan / (1.0 + tan * tan).SquareRoot();
-                cos = 1.0 / (1.0 + tan * tan).SquareRoot();
-            }
-
-            public S(int row, int col)
-            {
-                i = row;
-                j = col;
-                sin = Element.one;
-                cos = Element.zero;
-            }
-        }
 
         public QRTransform(HessenbergTransform H)
         {
@@ -1570,95 +1592,111 @@ namespace Matrices
                     qrtransform[i, j] = H.GetHessenbergTransform().GetElements()[i, j];
                 }
             }
-            QR(qrtransform, n);
+            //QR(qrtransform, n);
         }
 
-        private void QR(Element[,] A, int n)
+        private void QRDoubleStep(Element[,] A, int n)
         {
-            Element eisum0 = SumSQ(A, n);
+            Element[,] C = new Element[2,2];
+            C[0,0] = A[n-2,n-2];
+            C[1,1] = A[n-1,n-1];
+            C[1,0] = A[n-1,n-2];
+            C[0,1] = A[n-2,n-1];
+            Tuple<Element, Element> shifts = CalcEigenvals22(C);
 
-            Element error = Element.one;
+            Element s = shifts.Item1 + shifts.Item2;
+            Element t = shifts.Item1 * shifts.Item2;
 
-            while(error > Element.tol)
-            { 
-                QROneStep(A, n);
+            Element x1 = A[0,0]*A[0,0] + A[0,1]*A[1,0] - s * A[0,0] + t;
+            Element x2 = A[1,0] * (A[0,0] + A[1,1] - s);
+            Element x3 = A[1,0] * A[2,1];
 
-                Element eisum1 = SumSQ(A, n);
-                error = eisum1 - eisum0;
+            RotationMatrix U1 = new RotationMatrix(1, 2, n, x1, x2);
 
-                eisum0 = eisum1;
-            }
-        }
+            Matrix B1 = U1.GetRotationMatrix().Transpose() * new Matrix(A) * U1.GetRotationMatrix();
+            Element[,] EB1 = B1.GetElements();
 
-        private void QROneStep(Element[,] A, int n)
-        {
-            List<S> slist = new List<S>();
-            for (int j = 0; j < n; j++)
+            x1 = EB1[0,0] * EB1[0,0] + EB1[0,1]*EB1[1,0] - s * EB1[0,0] + t;
+
+            RotationMatrix U2 = new RotationMatrix(1, 3, n, x1, x3);
+
+            Matrix B = U2.GetRotationMatrix().Transpose() * new Matrix(A) * U2.GetRotationMatrix();
+            Element[,] EB = B.GetElements();
+
+            for(int i = 1; i < n-2; i++)
             {
-                for (int i = n - 1; i > j; i--)
+                if(i == n - 3)
                 {
-                    S temp = NextS(A, i, j);
-                    SijDotA(temp, A, n);
-                    slist.Add(temp);
+                    RotationMatrix Ux = new RotationMatrix(i, i+1, n, EB[i,i], EB[i+1,i]);
+                    B = Ux.GetRotationMatrix().Transpose() * B * Ux.GetRotationMatrix();
+                }
+                else
+                {
+                    RotationMatrix Ux1 = new RotationMatrix(i, i+1, n, EB[i,i], EB[i+1,i]);
+                    RotationMatrix Ux2 = new RotationMatrix(i, i+2, n, EB[i,i], EB[i+2,i]);
+                    B = Ux1.GetRotationMatrix().Transpose() * B * Ux1.GetRotationMatrix();
+                    B = Ux2.GetRotationMatrix().Transpose() * B * Ux2.GetRotationMatrix();
                 }
             }
-            foreach (var s in slist)
-            {
-                ADotTransposeSij(A, s, n);
-            }
         }
 
-        private Element[] Diagonals(Element[,] A, int n)
+        private void QRStep(Element[,] A, Element shift, int n)
         {
-            Element[] ret = new Element[n];
-            for (int i = 0; i < n; i++)
+            A[0,0] = A[0,0] - shift;
+            Element w, c = Element.zero, s = Element.zero, ct = Element.zero, st = Element.zero;
+            for(int i = 0; i < n; i++)
             {
-                ret[i] = A[i, i];
+                if(i < n-1)
+                {
+                    if(A[i,i].ABS() < double.Epsilon * A[i+1, i].ABS())
+                    {
+                        w = new Element(A[i+1, i].ABS());
+                        c = Element.zero;
+                        s = A[i+1, i].SIGN();
+                    }
+                    else
+                    {
+                        w = (A[i,i]*A[i,i] + A[i+1,i]*A[i+1,i]).SquareRoot();
+                        c = A[i,i] / w;
+                        s = - (A[i+1,i] / w);
+                    }
+                    for(int j = i+1; j < n; j++)
+                    {
+                        Element g = c * A[i,j] - s * A[i+1,j];
+                        A[i+1, j] = s * A[i,j] + c * A[i+1,j];
+                        A[i,j] = g;
+                    }
+                }
+                
+                if(i > 0)
+                {
+                    for(int j = 0; j < n; j++)
+                    {
+                        Element g = ct * A[j,i-1] - st * A[j,i];
+                        A[j,i] = st * A[j,i-1] + ct * A[j,i];
+                        A[j,i-1] = g;
+                    }
+                    A[i-1,i-1] = A[i-1,i-1] + shift;
+                }
+
+                ct = c;
+                st = s;
             }
-            return ret;
+            A[n-1,n-1] = A[n-1,n-1] + shift;
         }
 
-        private Element SumSQ(Element[,] A, int n)
+        private Tuple<Element, Element> CalcEigenvals22(Element[,] A)
         {
-            Element ret = Element.zero;
-            foreach (var element in Diagonals(A, n))
-            {
-                ret += element * element;
-            }
-            return ret;
-        }
+            Element b = -A[0,0] - A[1,1];
+            Element c = A[0,0] * A[1,1] - A[0,1] * A[1,0];
+            
+            Element x = 0.5 * b;
+            Element y = new Element(b.re*b.re - b.im*b.im-4*c.re, 2*b.im*b.re - 4*c.im);
 
-        private S NextS(Element[,] A, int i, int j)
-        {
-            if (A[i, j].ABS() < double.Epsilon || A[j, j] == Element.zero)
-            {
-                return new S(i, j);
-            }
-            else
-            {
-                Element tan = A[i, j] / A[j, j];
-                return new S(i, j, tan);
-            }
-        }
+            Element ev1 = x + y.SquareRoot();
+            Element ev2 = x - y.SquareRoot();
 
-        private void SijDotA(S s, Element[,] A, int n)
-        {
-            for (int k = 0; k < n; k++)
-            {
-                Element temp = A[s.j, k] * s.cos + A[s.i, k] * s.sin;
-                A[s.i, k] = A[s.i, k] * s.cos - A[s.j, k] * s.sin;
-                A[s.j, k] = temp;
-            }
-        }
-
-        private void ADotTransposeSij(Element[,] A, S s, int n)
-        {
-            for (int k = 0; k < n; k++)
-            {
-                Element temp = A[k, s.j] * s.cos + A[k, s.i] * s.sin;
-                A[k, s.i] = A[k, s.i] * s.cos - A[k, s.j] * s.sin;
-                A[k, s.j] = temp;
-            }
+            return new Tuple<Element, Element>(ev1, ev2);
         }
 
         public Matrix GetQRTransform()
